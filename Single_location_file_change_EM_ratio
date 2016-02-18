@@ -1,0 +1,127 @@
+ program ptsr_change
+c
+c
+c Program:	ptsr_change  
+c
+c Language:	Fortran90
+c Programmer:	Chitsan Wang 
+c Version:	0.0.3
+     
+      parameter(MXY=300, MXZ=16, MXSPEC=200, MXPT=700000,X=177337)
+c 177337 is the x location
+	  character*41 a, b
+	  character*49 inputname
+	  character*49 outputname
+      character*10 ftype
+      character*4 fname(10), spname(10,MXSPEC)
+      character*4 note(60)
+      integer iloc(4,MXY), LC, cn, pt(3),c,d
+      integer idumx(MXPT), idumy(MXPT)
+      integer icell(MXPT), jcell(MXPT), kcell(MXPT)
+      real    temp(MXY,MXY), bconc(MXZ,MXY)
+      real    emiss(MXPT), flow(MXPT), plumht(MXPT),emissm(MXPT)
+      real    xc(MXPT),yc(MXPT),sh(MXPT),X,Y,ER
+      real    sd(MXPT),st(MXPT),sv(MXPT)
+      logical lhdrspec, l3d, lbndry, lptsrc
+c read and setup basic parameters    
+	  write(*,*)'input location and filename'
+	  read(*,*)inputname
+	  write(*,*)'output location and filename'
+	  read(*,*)outputname  
+c	  write(*,*)'input start hour 1~24'
+c	  read(*,*)bh
+	  write(*,*) 'input spec sequence'
+	  read (*,*) Spec  
+	  write(*,*) 'input the times of increasing emission rate'
+	  read (*,*) ER
+c-----------------------------------------------------------
+	  write(*,*)inputname
+	  write(*,*)outputname
+	  open(10,file=inputname, form='unformatted',status='old')
+	  open(11,file=outputname, form='unformatted',status='new')
+c     
+		read (10) fname,note,nseg,nspec,idate,begtim,jdate,endtim
+		write(11) fname,note,nseg,nspec,idate,begtim,jdate,endtim
+c---
+		read (10) orgx,orgy,iutm,utmx,utmy,dx,dy,nx,ny,nz,nzlo,nzup,hts,htl,htu
+		write(11) orgx,orgy,iutm,utmx,utmy,dx,dy,nx,ny,nz,nzlo,nzup,hts,htl,htu
+c---
+		read (10) i1,j1,nx1,ny1
+		write(11) i1,j1,nx1,ny1
+c---      
+		read (10) ((spname(m,l),m=1,10),l=1,nspec)
+		write(*,903) ((spname(m,l),m=1,10),l=1,nspec)
+		write(11) ((spname(m,l),m=1,10),l=1,nspec)
+c---
+		read (10) iseg,npmax
+		write(11) iseg,npmax
+c---
+		read (10) ((xc(ip),yc(ip),sh(ip),sd(ip),st(ip),sv(ip)),ip=1,npmax)
+		write(11) (xc(ip),yc(ip),sh(ip),sd(ip),st(ip),sv(ip),ip=1,npmax)
+c-----------------------------------------------------------------------------------
+c
+		write(*,*) 'INPUTE search value xc and yc like XXXXXX,XXXXXX'
+		pt=0
+c------Array zero
+		cn=0   
+c------count zero
+		write(*,*)pt
+		do ip = 1,npmax
+			if (xc(ip) .EQ. X ) THEN 
+				PRINT *,'Found at',ip,'High',sh(ip),'Diam',sd(ip)
+				cn = cn+1
+				pt(cn) = ip
+			end if   
+		enddo
+		write(*,*)pt
+ 100		read (10,end=800) ibgdat,begtim,iendat,endtim
+			write(*,904) ibgdat,begtim,iendat,endtim
+			write(11) ibgdat,begtim,iendat,endtim
+			read (10) iseg,numpts
+			write(11) iseg,numpts
+			read (10) (icell(ip),jcell(ip),kcell(ip),flow(ip),
+     &                     plumht(ip),ip=1,numpts)
+			write(11) (icell(ip),jcell(ip),kcell(ip),flow(ip),
+     &                     plumht(ip),ip=1,numpts)
+			do l=1,nspec
+				read (10) iseg, (spname(m,l),m=1,10),(emiss(ip),ip=1,numpts)
+				if (l .EQ. Spec) then
+				write(*,903) iseg, (spname(m,l),m=1,10)
+c				WRITE(*,'(A4)'),spname(m,l)
+					do i = 1, cn 
+						LC=pt(i)
+						write(*,*)emiss(LC)
+						emiss(LC)=emiss(LC)*ER
+						write(*,*)emiss(LC)
+					enddo
+				endif
+				write(11) iseg, (spname(m,l),m=1,10), (emiss(ip),
+     &                          ip=1,numpts)  	 
+			enddo
+c---  end loop over hours
+	  goto 100
+	  close(10)
+      close(11)
+ 800  write(*,*) "End of File"
+ 111  continue
+c
+c---  I/O error messages ---
+c
+ 900  format(10a1,60a1,/,i2,1x,i2,1x,i6,f6.0,i6,f6.0)
+ 901  format(2(f16.5,1x),i3,1x,4(f16.5,1x),5i4,3f7.0)
+ 902  format(4i5) 
+ 903  format(10a1)
+ 904  format(5x,2(i10,f10.2))
+ 905  format(i4,10a1)
+ 906  format(5e14.7)
+ 908  format(3i10/(5i14))
+ 909  format(i10,10a1,i10/(5e14.7))
+ 910  format(2i10)
+ 911  format(2(f16.5,1x),4e14.7)
+ 912  format(3i12,2e14.7)
+ 913  format(5e14.7)
+ 914  format(1a40,1I5)
+ 915  format(1a45,1I5)
+c
+ 999  stop
+      end
