@@ -1,0 +1,319 @@
+    program ptsmrg
+c
+c      program reads binary point source files and 
+c      merges them all into one file.  all files
+c      are assumed to have the same domain definition.
+c
+      parameter ( mxf = 2, mxpts = 200000 )
+
+      character*120 infile, outfile
+
+      character*4 ifile(10), note(60), mspec(10,25)
+      character*4  spname(10,30)
+      character*4 ifile1(10), note1(60), mspec1(10,25)
+      character*4  spname1(10,30)
+      character*10 card,card1
+      character*300 card300
+      real     emiss(mxf,mxpts),emissout(mxpts)
+      real     xstk(mxpts),ystk(mxpts),hstk(mxpts),dstk(mxpts)
+      real     xstk1(mxpts),ystk1(mxpts),hstk1(mxpts),dstk1(mxpts)
+      real   tstk(mxpts),vstk(mxpts)
+      real   tstk1(mxpts),vstk1(mxpts)
+
+      real   xstkin(mxpts), ystkin(mxpts), hstkin(mxpts)
+      real   dstkin(mxpts), tstkin(mxpts), vstkin(mxpts)
+
+      integer icell(mxpts),jcell(mxpts), kcell(mxpts)
+      integer icell1(mxpts),jcell1(mxpts), kcell1(mxpts)
+      real   flow(mxpts),plumht(mxpts)
+      real   flow1(mxpts),plumht1(mxpts)
+      logical eof,include(mxpts),includein(mxpts)
+      data   inxref/2/
+
+c
+c read the coordinates of the roll-out area
+c
+      read(5,'(4i5)')i1,i2,j1,j2 
+c
+c read the grid info grid for which the preceeding grid refers
+c
+      read(5,'(3f10.0)')xorig,yorig,dx
+c
+c convert the input roll-out area from I/J to the CAMx projection
+c
+      x1 = xorig + float(i1-1)*dx
+      x2 = xorig + float(i2)*dx
+      y1 = yorig + float(j1-1)*dx
+      y2 = yorig + float(j2)*dx
+
+      write(*,*)x1,x2,y1,y2
+
+      read(5,*)nfiles
+      if (nfiles .gt. mxf) then
+        write(*,*)'Number of files to process ',nfiles
+        write(*,*)' Exceeds maximum number in program ',mxf
+        write(*,*)' Increase dimension and recompile '
+        stop
+      end if
+
+      do i = 1, nfiles
+        junit = 20 + i
+        read(5,90)infile
+        open( junit, file=infile,status='old',form='unformatted')
+      enddo
+
+      read(5,90) outfile
+      open(10, file=outfile, status='unknown',form='unformatted')
+
+      read( 21 ) ifile,note,nseg,nspecs,idate,begtim,jdate,endtim
+      read( 21 ) orgx,orgy,izone,utmx,utmy,deltax,deltay,nx,ny,
+     $ nz,nzlowr,nzuppr,htsur,htlow,htupp
+
+      write( 10 ) ifile,note,nseg,nspecs,idate,begtim,jdate,endtim
+      write( 10 ) orgx,orgy,izone,utmx,utmy,deltax,deltay,nx,ny,
+     $ nz,nzlowr,nzuppr,htsur,htlow,htupp
+
+      do i = 2,nfiles
+        junit = 20 + i
+        read( junit ) ifile,note,nseg,nspecs1,idate1,begtim1,
+     $                jdate1,endtim1
+        read( junit ) orgx,orgy,izone,utmx1,utmy1,deltax1,
+     $                deltay1,nx1,ny1,
+     $                nz,nzlowr,nzuppr,htsur,htlow,htupp
+        if ((nspecs .ne. nspecs1 ) .or. (idate .ne. idate1  ) .or.
+     $      (begtim  .ne. begtim1) .or. (jdate .ne. jdate1  ) .or.
+     &      (utmx    .ne. utmx1  ) .or. (utmy  .ne. utmy1   ) .or.
+     &      (deltax  .ne. deltax1) .or. (deltay .ne. deltay1) .or.
+     &      (nx      .ne. nx1    ) .or. (ny     .ne. ny1    )) then
+          write(*,*)'headers do not agree '
+          write(*,*)'First file ',nspecs,idate,begtim,
+     $                jdate,endtim,utmx,utmy,deltax,
+     &                deltay,nx,ny
+          write(*,*)'Other file ',nspecs1,idate1,begtim1,
+     $                jdate1,endtim1,utmx1,utmy1,deltax1,
+     &                deltay1,nx1,ny1,i
+          stop
+        end if
+      enddo
+      
+c
+c
+c   read and write out file header information
+c
+      if (nseg.eq.0) go to 11
+c  segment origin and segment size
+      do i=1,nseg
+        read  ( 21 ) ix,iy,nxcll,nycll
+        write ( 10 ) ix,iy,nxcll,nycll
+      end do
+
+      do i = 2,nfiles
+        junit = 20 + i
+        read( junit )
+      enddo
+
+  11  continue
+      if (nspecs.le.0) go to 21
+
+c  names of all species present
+
+      read  ( 21 ) ((mspec(i,j),i=1,10),j=1,nspecs)
+      write ( 10 ) ((mspec(i,j),i=1,10),j=1,nspecs)
+
+  20  continue
+
+      do n = 2,nfiles
+        junit = 20 + n
+        read( junit )((mspec1(i,j),i=1,10),j=1,nspecs) 
+        do j = 1, nspecs
+          write(card,'(10a1)')(mspec(i,j),i=1,10)
+          write(card1,'(10a1)')(mspec1(i,j),i=1,10)
+          if (card .ne. card1) then
+            write(*,*) 'Species Lists do not agree '
+            write(*,*) card,card1,n
+            stop 455
+          end if
+        end do
+      enddo
+
+  21  continue
+      if (nseg.le.0) go to 31
+c
+c  time invariant data
+c
+      nptot = 0
+      do 30 i=1,nseg
+       read ( 21 ) isegm1,npmax
+       if (npmax .gt. mxpts) then
+         write(*,*)'Number of point sources in input file ',npmax
+         write(*,*)'Exceeds maximum number in program ',mxpts
+         write(*,*)'Increase dimension and recompile '
+         stop 56
+       end if
+       do n = 2, nfiles
+        junit = 20 + n
+        read ( 20 + n ) isegm1,npmax1
+        if (npmax .ne. npmax1) then
+          write(*,*)'Number of sources do not agree'
+          write(*,*)i,npmax,npmax1
+        end if
+       end do
+       write( 10 )  isegm1,npmax
+
+c
+c  for each point source location and stack parameters
+c
+       read( 21 ) (xstk(ii),ystk(ii),hstk(ii),dstk(ii),tstk(ii),
+     &  vstk(ii),ii=1,npmax)
+       write ( 10 ) (xstk(ii),ystk(ii),hstk(ii),dstk(ii),tstk(ii),
+     &  vstk(ii),ii=1,npmax)
+       do n = 2, nfiles
+        write(*,*)'Stacks in PTSOURCE files '
+        junit = 20 + n
+        read( junit ) (xstk1(ii),ystk1(ii),hstk1(ii),dstk1(ii),
+     &                 tstk1(ii),vstk1(ii),ii=1,npmax)
+        do ii = 1, npmax
+          if ( (xstk(ii) .ne. xstk1(ii)) .or. 
+     &         (ystk(ii) .ne. ystk1(ii)) .or.
+     &         (hstk(ii) .ne. hstk1(ii)) .or.
+     &         (dstk(ii) .ne. dstk1(ii)) .or.
+     &         (tstk(ii) .ne. tstk1(ii)) .or.
+     &         (vstk(ii) .ne. vstk1(ii)) ) then
+            write(*,*)'Stack lists to not agree for file ',n
+            write(*,*)'Stack ',ii
+            stop
+          end if
+          write(*,*)ii,xstk(ii),ystk(ii),hstk1(ii),dstk1(ii),
+     &                 tstk1(ii),vstk1(ii)
+          if ( (xstk(ii) .ge. x1) .and.
+     &         (xstk(ii) .le. x2) .and.
+     &         (ystk(ii) .ge. y1) .and.
+     &         (ystk(ii) .le. y2) ) then
+            include(ii) = .true.
+          else
+            include(ii) = .false.
+          end if
+        end do
+       end do
+ 
+       write(*,*)'Located Sources '
+       do ii = 1, npmax
+         if (include(ii)) then
+           write(*,*)ii,xstk1(ii),ystk1(ii),hstk1(ii),dstk1(ii),
+     &                 tstk1(ii),vstk1(ii)
+         end if
+       end do
+       write(*,*)
+
+  30  continue
+  31  continue
+
+      ibhr=begtim+1
+      iehr=endtim
+c
+c    large loop for 24 hours of pt source data
+c
+      do 1000 ih = 1,100
+        read  ( 21 ,end=999) ibgdat, begtim, iendat, endtim
+        write ( 10 ) ibgdat, begtim, iendat, endtim
+
+        do n = 2, nfiles
+          junit = 20 + n
+          read ( junit ) ibgdat1, begtim1, iendat1, endtim1
+          write ( *,* ) ibgdat1, begtim1, iendat1, endtim1
+          if ( (ibgdat .ne. ibgdat1) .or.
+     &         (begtim .ne. begtim1) .or.
+     &         (iendat .ne. iendat1) .or.
+     &         (endtim .ne. endtim1) ) then
+            write(*,*)'Dates in files do not agree'
+            write(*,*)'First file ',ibgdat, begtim, iendat, endtim
+            write(*,*)n,' file ',ibgdat1, begtim1, iendat1, endtim1
+          end if
+        enddo
+
+c
+c    now go through number of segments
+c
+        if (nseg.le.0) go to 1000
+        do 990 j=1,nseg
+
+          read( 21 ) isegnm,numpts
+          write( 10 ) isegnm,numpts
+          read( 21 ) (icell(ii),jcell(ii),kcell(ii),flow(ii),
+     &    plumht(ii),ii=1,numpts)
+          write( 10 ) (icell(ii),jcell(ii),kcell(ii),flow(ii),
+     &         plumht(ii),ii=1,numpts)
+          do n = 2, nfiles
+            junit = 20 + n
+            read( junit ) isegnm,numpts
+            read( junit ) (icell1(ii),jcell1(ii),kcell1(ii),flow1(ii),
+     &         plumht1(ii),ii=1,numpts)
+            do ii = 1, numpts
+              if ( (icell(ii) .ne. icell1(ii) ) .or.
+     &             (jcell(ii) .ne. jcell1(ii) ) .or.
+     &             (kcell(ii) .ne. kcell1(ii) ) .or.
+     &             (flow(ii)  .ne. flow1(ii)  ) .or.
+     &             (plumht(ii).ne. plumht1(ii)) ) then
+                write(*,*)'Stack i,j,k,flow,ht do not agree '
+                write(*,*)'File ',n,' stack ',ii
+                stop
+              end if
+            end do
+          end do
+
+
+          if (nspecs.le.0) go to 990
+
+          do k=1,nspecs
+
+            read ( 21 ) isegnm,(spname(ii,k),ii=1,10),
+     &            (emiss(1,ii), ii=1, numpts ) 
+            do n = 2, nfiles
+              junit = 20 + n 
+              read (junit) isegnm,(spname1(ii,k),ii=1,10),
+     &               (emiss(n,ii), ii=1, numpts ) 
+              write(card,'(10a1)')(spname(ii,k),ii=1,10)
+              write(card1,'(10a1)')(spname1(ii,k),ii=1,10)
+              if (card .ne. card1) then
+                write(*,*) 'Hourly species Lists do not agree '
+                write(*,*) card,card1,n,k
+                stop 457
+              end if
+            enddo
+
+            do ii = 1, numpts
+              if (include(ii)) then
+                emissout(ii) = emiss(2,ii)
+              else
+                emissout(ii) = emiss(1,ii)
+              end if
+            end do
+
+            write( 10 ) isegnm ,(spname(ii,k),ii=1,10),
+     $              (emissout(ii), ii=1 ,numpts)
+          end do
+
+             
+  990   continue
+ 1000 continue
+
+  999 continue
+
+      stop
+
+   90 format(a)
+ 1002 format(4i5)
+ 1003 format(10a1)
+ 1004 format(4i10)
+ 1005 format(6d20.7)
+ 1006 format(10a1,e18.9)
+ 1007 format(2(i10,f10.2),i10)
+ 1008 format(3i12,2e18.9)
+ 1009 format(i10,10a1)
+ 1010 format(9e14.9)
+ 1013 format(1x,10a1)
+ 1021 format(2i10)
+ 2001 format(f10.1,1x,f10.1,1x,i3,f10.1,1x,f10.1,1x,2f6.0,5i4,3f7.0)
+ 2100 format(10a1,60a1,/,i2,1x,i2,1x,i6,f6.0,i6,f6.0)
+      end
+
